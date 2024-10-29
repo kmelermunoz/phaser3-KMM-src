@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Making your first Phaser 3 Game - Part 10</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script> <!-- Inclou la biblioteca Phaser 3 -->
+    <style type="text/css">
+        body {
+            margin: 0; <!--
+            Elimina els marges de la pàgina -->
+        }
+    </style>
+</head>
+<body>
+
+    <script type="text/javascript">
+
+        // Configuració del joc
+        var config = {
+            type: Phaser.AUTO, // Tipus de renderització automàtic (WebGL o Canvas)
+            width: 800, // Amplada de la pantalla
+            height: 600, // Altura de la pantalla
+            physics: {
+                default: 'arcade', // Tipus de física
+                arcade: {
+                    gravity: { y: 300 }, // Gravetat en l'eix Y
+                    debug: false // Desactiva el mode depuració
+                }
+            },
+            scene: {
+                preload: preload, // Funció per carregar els recursos
+                create: create, // Funció per crear l'escena
+                update: update // Funció que s'executa en cada fotograma
+            }
+        };
+
+        // Declaració de variables
+        var jugador; // Jugador
+        var estrelles; // Estrelles
+        var bombes; // Bombes
+        var nivells; // Plataformes
+        var puntuacioextra; // Reemplaça 'portal' amb 'puntuacioextra'
+        var cursors; // Tecles de control
+        var puntuacio = 0; // Puntuació del jugador
+        var jocAcabat = false; // Estat del joc (si s'ha acabat o no)
+        var textPuntuacio; // Text per mostrar la puntuació
+        var textTemporitzador; // Text per mostrar el temporitzador
+        var textFiJoc; // Text per mostrar el missatge de fi del joc
+        var textGuanyador; // Text per mostrar el missatge de guanyador
+        var compteEnrere = 60; // Temporitzador en segons
+
+        // Creació del nou joc amb la configuració definida
+        var joc = new Phaser.Game(config);
+
+        // Funció per carregar els recursos del joc
+        function preload() {
+            this.load.image('sky', 'assets/sky.png'); // Càrrega de la imatge del fons
+            this.load.image('ground', 'assets/platform.png'); // Càrrega de la imatge de la plataforma
+            this.load.image('star', 'assets/star.png'); // Càrrega de la imatge de l'estrella
+            this.load.image('bomb', 'assets/bomb.png'); // Càrrega de la imatge de la bomba
+            this.load.image('puntuacioextra', 'assets/puntuacioextra.png'); // Càrrega de la imatge de puntuació extra
+            this.load.spritesheet('dude', 'assets/dude.png', { frameWidth: 32, frameHeight: 48 }); // Càrrega del spritesheet del jugador
+        }
+
+        // Funció que crea l'escena del joc
+        function create() {
+            this.add.image(400, 300, 'sky'); // Afegir el fons al joc
+
+            // Grup de plataformes
+            nivells = this.physics.add.staticGroup(); // Crear un grup de plataformes estàtiques
+
+            // Creació de plataformes en diferents posicions
+            nivells.create(400, 568, 'ground').setScale(2).refreshBody(); // Plataforma al fons
+            nivells.create(550, 400, 'ground'); // Plataforma mitja
+            nivells.create(150, 300, 'ground'); // Plataforma més alta
+            nivells.create(700, 200, 'ground'); // Plataforma superior
+
+            // Creació del jugador
+            jugador = this.physics.add.sprite(100, 450, 'dude'); // Creació del sprite del jugador
+            jugador.setBounce(0.2); // Configuració del rebote
+            jugador.setCollideWorldBounds(true); // El jugador no pot sortir dels límits del món
+
+            // Animacions del jugador
+            this.anims.create({
+                key: 'left', // Clau per a l'animació cap a l'esquerra
+                frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }), // Frames de l'animació
+                frameRate: 10, // Velocitat de l'animació
+                repeat: -1 // Repetir indefinidament
+            });
+            this.anims.create({
+                key: 'turn', // Clau per a l'animació de girar
+                frames: [{ key: 'dude', frame: 4 }], // Frame de girar
+                frameRate: 20 // Velocitat de l'animació
+            });
+            this.anims.create({
+                key: 'right', // Clau per a l'animació cap a la dreta
+                frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }), // Frames de l'animació
+                frameRate: 10, // Velocitat de l'animació
+                repeat: -1 // Repetir indefinidament
+            });
+
+            // Creació de les tecles de control
+            cursors = this.input.keyboard.createCursorKeys();
+
+            // Creació d'estrelles
+            estrelles = this.physics.add.group({
+                key: 'star', // Clau per al grup d'estrelles
+                repeat: 5, // Nombre d'estrelles a generar
+                setXY: { x: 12, y: 0, stepX: 120 } // Posició inicial i separació entre estrelles
+            });
+
+            // Configuració del rebote de les estrelles
+            estrelles.children.iterate(function (child) {
+                child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8)); // Estrelles reboten amb gravetat
+            });
+
+            // Creació del grup de bombes
+            bombes = this.physics.add.group(); // Grup per a les bombes
+
+            // Text per a la puntuació
+            textPuntuacio = this.add.text(16, 16, 'Puntuació: ' + puntuacio, { fontSize: '32px', fill: '#000' }); // Text de puntuació
+            textTemporitzador = this.add.text(620, 16, 'Temps: ' + compteEnrere, { fontSize: '32px', fill: '#000' }); // Text del temporitzador
+
+            // puntuacioextra (antiga portal)
+            puntuacioextra = this.physics.add.staticImage(700, 450, 'puntuacioextra'); // Imatge estàtica de puntuació extra
+
+            // Col·lisons entre els objectes
+            this.physics.add.collider(jugador, nivells); // Col·lisió entre jugador i plataformes
+            this.physics.add.collider(estrelles, nivells); // Col·lisió entre estrelles i plataformes
+            this.physics.add.collider(bombes, nivells); // Col·lisió entre bombes i plataformes
+
+            // Superposicions
+            this.physics.add.overlap(jugador, estrelles, collectStar, null, this); // Superposició entre jugador i estrelles
+            this.physics.add.overlap(jugador, puntuacioextra, accessPuntuacioExtra, null, this); // Superposició entre jugador i puntuacioextra
+            this.physics.add.collider(jugador, bombes, hitBomb, null, this); // Col·lisió entre jugador i bombes
+
+            // Temporitzador
+            this.time.addEvent({
+                delay: 1000, // Retràs de 1000 ms
+                callback: updateTimer, // Funció de callback per actualitzar el temporitzador
+                callbackScope: this, // Àmbit del callback
+                loop: true // Repetir contínuament
+            });
+        }
+
+        // Funció que s'executa cada fotograma
+        function update() {
+            if (jocAcabat) return; // Si el joc ha acabat, no fem res
+
+            // Control del jugador
+            if (cursors.left.isDown) { // Si es prem la tecla d'esquerra
+                jugador.setVelocityX(-160); // Moure a l'esquerra
+                jugador.anims.play('left', true); // Reproduir animació cap a l'esquerra
+            }
+            else if (cursors.right.isDown) { // Si es prem la tecla de dreta
+                jugador.setVelocityX(160); // Moure a la dreta
+                jugador.anims.play('right', true); // Reproduir animació cap a la dreta
+            }
+            else { // Si no es prem cap tecla de moviment
+                jugador.setVelocityX(0); // Aturar el jugador
+                jugador.anims.play('turn'); // Reproduir animació de girar
+            }
+
+            // Control del salt
+            if (cursors.up.isDown && jugador.body.touching.down) { // Si es prem la tecla de salt i el jugador està tocant el terra
+                jugador.setVelocityY(-330); // Saltar
+            }
+        }
+
+        // Funció per actualitzar el temporitzador
+        function updateTimer() {
+            compteEnrere--; // Reduir el compte enrere
+            textTemporitzador.setText('Temps: ' + compteEnrere); // Actualitzar el text del temporitzador
+
+            if (compteEnrere <= 0) { // Si el temporitzador arriba a 0
+                this.physics.pause(); // Pausar la física del joc
+                jocAcabat = true; // Canviar l'estat del joc a acabat
+                showGameOverText.call(this); // Mostrar el text de fi del joc
+            }
+        }
+
+        // Funció per recollir estrelles
+        function collectStar(jugador, estrella) {
+            estrella.disableBody(true, true); // Desactivar l'estrella recollida
+            puntuacio += 10; // Afegir puntuació
+            textPuntuacio.setText('Puntuació: ' + puntuacio); // Actualitzar el text de puntuació
+
+            // Generar una bomba en una posició aleatòria cada vegada que es recull una estrella
+            var x = Phaser.Math.Between(0, 800); // Posició X aleatòria
+            var bomba = bombes.create(x, 16, 'bomb'); // Crear una nova bomba
+            bomba.setBounce(1); // Configurar el rebote de la bomba
+            bomba.setCollideWorldBounds(true); // La bomba no pot sortir dels límits del món
+            bomba.setVelocity(Phaser.Math.Between(-200, 200), 20); // Velocitat de la bomba
+            bomba.allowGravity = false; // No permetre la gravetat a la bomba
+
+            // Condició per guanyar
+            if (puntuacio >= 60) { // Si la puntuació és igual o superior a 60
+                this.physics.pause(); // Pausar la física del joc
+                jugador.setTint(0x00ff00); // Canviar el color del jugador a verd
+                showWinText.call(this); // Mostrar el missatge de guanyador
+            }
+        }
+
+        // Funció per manejar la col·lisió amb les bombes
+        function hitBomb(jugador, bomba) {
+            this.physics.pause(); // Pausar la física del joc
+            jugador.setTint(0xff0000); // Canviar el color del jugador a vermell
+            jugador.anims.play('turn'); // Reproduir animació de girar
+            jocAcabat = true; // Canviar l'estat del joc a acabat
+            showGameOverText.call(this); // Mostrar el text de fi del joc
+        }
+
+        // Funció per accedir a la puntuació extra
+        function accessPuntuacioExtra(jugador, puntuacioextra) {
+            puntuacio += 50; // Afegir 50 punts a la puntuació
+            textPuntuacio.setText('Puntuació: ' + puntuacio); // Actualitzar el text de puntuació
+            puntuacioextra.disableBody(true, true); // Desactivar la imatge de puntuació extra
+            showPuntuacioExtraText.call(this); // Mostrar el missatge de puntuació extra
+        }
+
+        // Funció per mostrar el missatge de puntuació extra
+        function showPuntuacioExtraText() {
+            this.add.text(400, 300, 'Puntuació Extra! +50 Punts!', { fontSize: '32px', fill: '#00ff00' }) // Text de puntuació extra
+                .setOrigin(0.5); // Centrar el text
+        }
+
+        // Funció per mostrar el missatge de fi del joc
+        function showGameOverText() {
+            textFiJoc = this.add.text(400, 300, 'Fi del Joc!', { fontSize: '64px', fill: '#ff0000' }) // Text de fi del joc
+                .setOrigin(0.5); // Centrar el text
+        }
+
+        // Funció per mostrar el missatge de guanyador
+        function showWinText() {
+            textGuanyador = this.add.text(400, 300, 'Has Guanyat!', { fontSize: '64px', fill: '#00ff00' }) // Text de guanyador
+                .setOrigin(0.5); // Centrar el text
+        }
+
+    </script>
+
+</body>
+</html>
